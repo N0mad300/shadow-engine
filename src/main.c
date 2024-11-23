@@ -26,6 +26,8 @@
 #include "nuklear.h"
 #include "nuklear_d3d11.h"
 
+#include "windows/process.h"
+
 static IDXGISwapChain *swap_chain;
 static ID3D11Device *device;
 static ID3D11DeviceContext *context;
@@ -91,6 +93,103 @@ WindowProc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
     return DefWindowProcW(wnd, msg, wparam, lparam);
 }
 
+/* GUI Variables */
+int width;
+int height;
+
+float modal_width;
+float modal_height;
+float modal_x;
+float modal_y;
+
+int show_processes_list = 0;
+
+/* GUI Functions Declarations */
+void show_menubar(struct nk_context *ctx);
+void show_processes_selector(struct nk_context *ctx);
+
+/* GUI Functions Definitions */
+void show_menubar(struct nk_context *ctx)
+{
+    // Menubar
+    nk_menubar_begin(ctx);
+    nk_layout_row_static(ctx, 25, 60, 3);
+
+    // Process menu
+    if (nk_menu_begin_label(ctx, "Process", NK_TEXT_LEFT, nk_vec2(120, 200)))
+    {
+        nk_layout_row_dynamic(ctx, 25, 1);
+        if (nk_menu_item_label(ctx, "Open process", NK_TEXT_LEFT))
+        {
+            show_processes_list = 1;
+        }
+        if (nk_menu_item_label(ctx, "Close current", NK_TEXT_LEFT))
+        {
+        }
+        nk_menu_end(ctx);
+    }
+
+    // Help menu
+    if (nk_menu_begin_label(ctx, "Help", NK_TEXT_LEFT, nk_vec2(120, 200)))
+    {
+        nk_layout_row_dynamic(ctx, 25, 1);
+        if (nk_menu_item_label(ctx, "About", NK_TEXT_LEFT))
+        {
+        }
+        if (nk_menu_item_label(ctx, "GitHub", NK_TEXT_LEFT))
+        {
+        }
+        nk_menu_end(ctx);
+    }
+    nk_menubar_end(ctx);
+}
+
+void show_processes_selector(struct nk_context *ctx)
+{
+    if (show_processes_list)
+    {
+        if (nk_popup_begin(ctx, NK_POPUP_STATIC, "Processes Selector", NK_WINDOW_CLOSABLE,
+                           nk_rect(modal_x, modal_y, modal_width, modal_height)))
+        {
+            getRunningProcesses();
+
+            // Dynamic Process List
+            nk_layout_row_dynamic(ctx, modal_height - (height / 6), 1);
+            ; // Flexible layout for the list
+            if (nk_group_begin(ctx, "Process List", NK_WINDOW_BORDER))
+            {
+                for (int i = 0; i < process_count; ++i)
+                {
+                    nk_layout_row_dynamic(ctx, 30, 1);
+                    if (nk_select_label(ctx, processes[i].name, NK_TEXT_LEFT, selected_process == i))
+                    {
+                        selected_process = i;
+                    }
+                }
+                nk_group_end(ctx);
+            }
+
+            // "Open" Button
+            nk_layout_row_dynamic(ctx, 30, 1);
+            if (nk_button_label(ctx, "Open"))
+            {
+                if (selected_process >= 0)
+                {
+                    printf("Selected process: %s\n", processes[selected_process].name);
+                }
+                show_processes_list = 0;
+                nk_popup_close(ctx);
+            }
+
+            nk_popup_end(ctx);
+        }
+        else
+        {
+            show_processes_list = 0; // Hide modal
+        }
+    }
+}
+
 int main(void)
 {
     struct nk_context *ctx;
@@ -113,12 +212,12 @@ int main(void)
     wc.hInstance = GetModuleHandleW(0);
     wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wc.lpszClassName = L"NuklearWindowClass";
+    wc.lpszClassName = L"ShadowEngineClass";
     RegisterClassW(&wc);
 
     AdjustWindowRectEx(&rect, style, FALSE, exstyle);
 
-    wnd = CreateWindowExW(exstyle, wc.lpszClassName, L"Nuklear Direct3D 11 Demo",
+    wnd = CreateWindowExW(exstyle, wc.lpszClassName, L"Shadow Engine",
                           style | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT,
                           rect.right - rect.left, rect.bottom - rect.top,
                           NULL, NULL, wc.hInstance, NULL);
@@ -157,15 +256,10 @@ int main(void)
     {
         struct nk_font_atlas *atlas;
         nk_d3d11_font_stash_begin(&atlas);
-        /*struct nk_font *droid = nk_font_atlas_add_from_file(atlas, "../../extra_font/DroidSans.ttf", 14, 0);*/
-        /*struct nk_font *robot = nk_font_atlas_add_from_file(atlas, "../../extra_font/Roboto-Regular.ttf", 14, 0);*/
-        /*struct nk_font *future = nk_font_atlas_add_from_file(atlas, "../../extra_font/kenvector_future_thin.ttf", 13, 0);*/
-        /*struct nk_font *clean = nk_font_atlas_add_from_file(atlas, "../../extra_font/ProggyClean.ttf", 12, 0);*/
-        /*struct nk_font *tiny = nk_font_atlas_add_from_file(atlas, "../../extra_font/ProggyTiny.ttf", 10, 0);*/
-        /*struct nk_font *cousine = nk_font_atlas_add_from_file(atlas, "../../extra_font/Cousine-Regular.ttf", 13, 0);*/
+        // struct nk_font *roboto = nk_font_atlas_add_from_file(atlas, "../fonts/ProggyClean.ttf", 14, 0);
         nk_d3d11_font_stash_end();
-        /*nk_style_load_all_cursors(ctx, atlas->cursors);*/
-        /*nk_style_set_font(ctx, &droid->handle)*/;
+        // nk_style_load_all_cursors(ctx, atlas->cursors);
+        // nk_style_set_font(ctx, &roboto->handle);
     }
 
     bg.r = 0.10f, bg.g = 0.18f, bg.b = 0.24f, bg.a = 1.0f;
@@ -183,44 +277,22 @@ int main(void)
         }
         nk_input_end(ctx);
 
+        RECT client_rect;
+        GetClientRect(wnd, &client_rect);
+        width = (int)client_rect.right - (int)client_rect.left;
+        height = (int)client_rect.bottom - (int)client_rect.top;
+
+        modal_width = ((float)width / 2);
+        modal_height = ((float)height / 2);
+        modal_x = (width - modal_width) / 2;
+        modal_y = (height - modal_height) / 2;
+
         /* GUI */
-        if (nk_begin(ctx, "Demo", nk_rect(50, 50, 230, 250),
-                     NK_WINDOW_BORDER | NK_WINDOW_MOVABLE | NK_WINDOW_SCALABLE |
-                         NK_WINDOW_MINIMIZABLE | NK_WINDOW_TITLE))
+        if (nk_begin(ctx, "Shadow Engine", nk_rect(0, 0, (float)width, (float)height),
+                     NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR))
         {
-            enum
-            {
-                EASY,
-                HARD
-            };
-            static int op = EASY;
-            static int property = 20;
-
-            nk_layout_row_static(ctx, 30, 80, 1);
-            if (nk_button_label(ctx, "button"))
-                fprintf(stdout, "button pressed\n");
-            nk_layout_row_dynamic(ctx, 30, 2);
-            if (nk_option_label(ctx, "easy", op == EASY))
-                op = EASY;
-            if (nk_option_label(ctx, "hard", op == HARD))
-                op = HARD;
-            nk_layout_row_dynamic(ctx, 22, 1);
-            nk_property_int(ctx, "Compression:", 0, &property, 100, 10, 1);
-
-            nk_layout_row_dynamic(ctx, 20, 1);
-            nk_label(ctx, "background:", NK_TEXT_LEFT);
-            nk_layout_row_dynamic(ctx, 25, 1);
-            if (nk_combo_begin_color(ctx, nk_rgb_cf(bg), nk_vec2(nk_widget_width(ctx), 400)))
-            {
-                nk_layout_row_dynamic(ctx, 120, 1);
-                bg = nk_color_picker(ctx, bg, NK_RGBA);
-                nk_layout_row_dynamic(ctx, 25, 1);
-                bg.r = nk_propertyf(ctx, "#R:", 0, bg.r, 1.0f, 0.01f, 0.005f);
-                bg.g = nk_propertyf(ctx, "#G:", 0, bg.g, 1.0f, 0.01f, 0.005f);
-                bg.b = nk_propertyf(ctx, "#B:", 0, bg.b, 1.0f, 0.01f, 0.005f);
-                bg.a = nk_propertyf(ctx, "#A:", 0, bg.a, 1.0f, 0.01f, 0.005f);
-                nk_combo_end(ctx);
-            }
+            show_menubar(ctx);
+            show_processes_selector(ctx);
         }
         nk_end(ctx);
 
@@ -231,13 +303,11 @@ int main(void)
         hr = IDXGISwapChain_Present(swap_chain, 1, 0);
         if (hr == DXGI_ERROR_DEVICE_RESET || hr == DXGI_ERROR_DEVICE_REMOVED)
         {
-            /* to recover from this, you'll need to recreate device and all the resources */
             MessageBoxW(NULL, L"D3D11 device is lost or removed!", L"Error", 0);
             break;
         }
         else if (hr == DXGI_STATUS_OCCLUDED)
         {
-            /* window is not visible, so vsync won't work. Let's sleep a bit to reduce CPU usage */
             Sleep(10);
         }
         assert(SUCCEEDED(hr));
