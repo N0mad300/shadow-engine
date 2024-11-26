@@ -7,6 +7,8 @@
 #include <limits.h>
 #include <time.h>
 
+#define MAX_RESULTS 256
+
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 
@@ -93,6 +95,40 @@ WindowProc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
     return DefWindowProcW(wnd, msg, wparam, lparam);
 }
 
+/* GUI Struct */
+typedef struct
+{
+    void *address;
+    char value[32];
+    char previous_value[32];
+    int freeze;
+} MemoryEntry;
+
+typedef struct
+{
+    MemoryEntry results[MAX_RESULTS];
+    size_t result_count;
+    MemoryEntry selected[MAX_RESULTS];
+    size_t selected_count;
+} MemoryTable;
+
+typedef enum
+{
+    SCAN_EXACT_VALUE,
+    SCAN_BIGGER_THAN,
+    SCAN_SMALLER_THAN,
+    SCAN_VALUE_BETWEEN,
+    SCAN_UNKNOWN_INITIAL
+} ScanType;
+
+typedef enum
+{
+    VALUE_BYTE,
+    VALUE_2BYTES,
+    VALUE_4BYTES,
+    VALUE_8BYTES
+} ValueType;
+
 /* GUI Variables */
 int width;
 int height;
@@ -103,17 +139,31 @@ float modal_x;
 float modal_y;
 
 int show_processes_list = 0;
+char current_process_name[MAX_NAME_LEN];
+
+static int selected_scan_type = SCAN_EXACT_VALUE;
+static int selected_value_type = VALUE_4BYTES;
+
+MemoryTable memory_table;
 
 /* GUI Functions Declarations */
 void show_menubar(struct nk_context *ctx);
+void show_combobox(struct nk_context *ctx);
+
+void init_memory_table(MemoryTable *table);
+void show_tables(struct nk_context *ctx, MemoryTable *memory_table);
+
 void show_processes_selector(struct nk_context *ctx);
+void show_error_modal(struct nk_context *ctx);
 
 /* GUI Functions Definitions */
 void show_menubar(struct nk_context *ctx)
 {
     // Menubar
     nk_menubar_begin(ctx);
-    nk_layout_row_static(ctx, 25, 60, 3);
+
+    nk_layout_row_begin(ctx, NK_STATIC, 25, 3);
+    nk_layout_row_push(ctx, 60);
 
     // Process menu
     if (nk_menu_begin_label(ctx, "Process", NK_TEXT_LEFT, nk_vec2(120, 200)))
@@ -125,6 +175,8 @@ void show_menubar(struct nk_context *ctx)
         }
         if (nk_menu_item_label(ctx, "Close current", NK_TEXT_LEFT))
         {
+            strcpy_s(current_process_name, sizeof(current_process_name), "");
+            selected_process = -1;
         }
         nk_menu_end(ctx);
     }
@@ -141,7 +193,127 @@ void show_menubar(struct nk_context *ctx)
         }
         nk_menu_end(ctx);
     }
+
+    // Second row: Centered Process Name
+    nk_layout_row_dynamic(ctx, 25, 1);
+    nk_label(ctx, current_process_name, NK_TEXT_CENTERED);
+
     nk_menubar_end(ctx);
+}
+
+void show_combobox(struct nk_context *ctx)
+{
+    nk_layout_row_static(ctx, 25, 200, 2);
+
+    // Scan Type Combobox
+    static const char *scan_types[] = {"Exact Value", "Bigger than...", "Smaller than...",
+                                       "Value between...", "Unknown initial value"};
+    selected_scan_type = nk_combo(ctx, scan_types, NK_LEN(scan_types), selected_scan_type, 25,
+                                  nk_vec2(200, 200));
+
+    // Value Type Combobox
+    static const char *value_types[] = {"Byte", "2 bytes", "4 bytes", "8 bytes"};
+    selected_value_type = nk_combo(ctx, value_types, NK_LEN(value_types), selected_value_type, 25,
+                                   nk_vec2(200, 150));
+
+    if (width >= 825)
+    {
+        nk_layout_row_static(ctx, 25, 200, 4);
+    }
+
+    // Value text input
+    static char search_value[64];
+    static int value_len = 0;
+    nk_edit_string(ctx, NK_EDIT_FIELD, search_value, &value_len, sizeof(search_value), nk_filter_ascii);
+
+    // Buttons for scan operations
+    if (nk_button_label(ctx, "Scan"))
+    {
+        // Trigger scan logic
+    }
+    if (nk_button_label(ctx, "Next Scan"))
+    {
+        // Trigger next scan logic
+    }
+    if (nk_button_label(ctx, "Previous Scan"))
+    {
+        // Trigger previous scan logic
+    }
+}
+
+void init_memory_table(MemoryTable *table)
+{
+    // Clear all entries in the results and selected arrays
+    memset(table, 0, sizeof(MemoryTable));
+
+    // Initialize counts to zero
+    table->result_count = 0;
+    table->selected_count = 0;
+}
+
+void show_tables(struct nk_context *ctx, MemoryTable *memory_table)
+{
+    // Read-only Table
+    nk_layout_row_dynamic(ctx, 200, 1);
+    if (nk_group_begin(ctx, "Scan Results", NK_WINDOW_BORDER | NK_WINDOW_TITLE))
+    {
+        nk_layout_row_dynamic(ctx, 25, 3);
+        nk_label(ctx, "Address", NK_TEXT_CENTERED);
+        nk_label(ctx, "Value", NK_TEXT_CENTERED);
+        nk_label(ctx, "Previous Value", NK_TEXT_CENTERED);
+
+        for (size_t i = 0; i < memory_table->result_count; i++)
+        {
+            MemoryEntry *entry = &memory_table->results[i];
+            nk_layout_row_dynamic(ctx, 25, 3);
+            nk_label(ctx, entry->address, NK_TEXT_CENTERED);
+            nk_label(ctx, entry->value, NK_TEXT_CENTERED);
+            nk_label(ctx, entry->previous_value, NK_TEXT_CENTERED);
+
+            // Context menu for right-click
+            if (nk_contextual_begin(ctx, 0, nk_vec2(120, 60), nk_window_get_bounds(ctx)))
+            {
+                if (nk_menu_item_label(ctx, "Select", NK_TEXT_CENTERED))
+                {
+                    if (memory_table->selected_count < MAX_RESULTS)
+                    {
+                        memory_table->selected[memory_table->selected_count++] = *entry;
+                    }
+                }
+                nk_contextual_end(ctx);
+            }
+        }
+        nk_group_end(ctx);
+    }
+
+    // Editable Table for Selected Addresses
+    nk_layout_row_dynamic(ctx, 200, 1);
+    if (nk_group_begin(ctx, "Selected Addresses", NK_WINDOW_BORDER | NK_WINDOW_TITLE))
+    {
+        nk_layout_row_dynamic(ctx, 25, 4);
+        nk_label(ctx, "Address", NK_TEXT_CENTERED);
+        nk_label(ctx, "Value", NK_TEXT_CENTERED);
+        nk_label(ctx, "Previous Value", NK_TEXT_CENTERED);
+        nk_label(ctx, "Freeze", NK_TEXT_CENTERED);
+
+        for (size_t i = 0; i < memory_table->selected_count; i++)
+        {
+            MemoryEntry *entry = &memory_table->selected[i];
+            nk_layout_row_dynamic(ctx, 25, 4);
+            nk_label(ctx, entry->address, NK_TEXT_CENTERED);
+
+            // Editable Value
+            int length = strlen(entry->value);
+            nk_flags result = nk_edit_string(ctx, NK_EDIT_SIMPLE, entry->value, &length, sizeof(entry->value), nk_filter_ascii);
+            entry->value[length] = '\0';
+
+            nk_label(ctx, entry->previous_value, NK_TEXT_CENTERED);
+
+            // Freeze Checkbox
+            nk_checkbox_label(ctx, "", &entry->freeze);
+        }
+        nk_group_end(ctx);
+    }
 }
 
 void show_processes_selector(struct nk_context *ctx)
@@ -175,7 +347,8 @@ void show_processes_selector(struct nk_context *ctx)
             {
                 if (selected_process >= 0)
                 {
-                    printf("Selected process: %s\n", processes[selected_process].name);
+                    // printf("Selected process: %s\n", processes[selected_process].name);
+                    strncpy_s(current_process_name, sizeof(current_process_name), processes[selected_process].name, MAX_NAME_LEN - 1);
                 }
                 show_processes_list = 0;
                 nk_popup_close(ctx);
@@ -188,6 +361,10 @@ void show_processes_selector(struct nk_context *ctx)
             show_processes_list = 0; // Hide modal
         }
     }
+}
+
+void show_error_modal(struct nk_context *ctx)
+{
 }
 
 int main(void)
@@ -262,6 +439,8 @@ int main(void)
         // nk_style_set_font(ctx, &roboto->handle);
     }
 
+    init_memory_table(&memory_table);
+
     bg.r = 0.10f, bg.g = 0.18f, bg.b = 0.24f, bg.a = 1.0f;
     while (running)
     {
@@ -292,6 +471,9 @@ int main(void)
                      NK_WINDOW_BORDER | NK_WINDOW_NO_SCROLLBAR))
         {
             show_menubar(ctx);
+            show_combobox(ctx);
+            show_tables(ctx, &memory_table);
+
             show_processes_selector(ctx);
         }
         nk_end(ctx);

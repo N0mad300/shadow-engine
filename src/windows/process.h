@@ -12,7 +12,7 @@
 typedef struct
 {
     char name[MAX_NAME_LEN];
-    int pid;
+    HANDLE handle;
 } ProcessInfo;
 
 extern ProcessInfo processes[MAX_PROCESSES];

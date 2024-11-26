@@ -19,7 +19,7 @@ void getRunningProcesses()
     for (int i = 0; i < count && process_count < MAX_PROCESSES; ++i)
     {
         DWORD pid = process_ids[i];
-        HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+        HANDLE hProcess = OpenProcess(PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION, FALSE, pid);
 
         if (hProcess)
         {
@@ -33,10 +33,15 @@ void getRunningProcesses()
                 GetModuleBaseName(hProcess, hModule, name, sizeof(name) / sizeof(char));
             }
 
-            strncpy(processes[process_count].name, name, MAX_NAME_LEN);
-            processes[process_count].name[MAX_NAME_LEN - 1] = '\0'; // Ensure null-terminated
+            strncpy_s(processes[process_count].name, sizeof(processes[process_count].name), name, MAX_NAME_LEN);
+            processes[process_count].name[MAX_NAME_LEN - 1] = '\0';
+            processes[process_count].handle = hProcess;
             process_count++;
 
+            CloseHandle(hProcess);
+        }
+        else
+        {
             CloseHandle(hProcess);
         }
     }
