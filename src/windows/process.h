@@ -3,9 +3,11 @@
 
 #include <windows.h>
 #include <psapi.h>
-#include <stdio.h>
 #include <string.h>
 
+#include "../utils.h"
+
+#define MAX_RESULTS 1024
 #define MAX_PROCESSES 1024
 #define MAX_NAME_LEN 256
 
@@ -20,6 +22,7 @@ extern ProcessInfo processes[MAX_PROCESSES];
 extern int process_count;
 extern int selected_process;
 
-void getRunningProcesses();
+void get_running_processes();
+void cleanup_process_handles();
 
 #endif

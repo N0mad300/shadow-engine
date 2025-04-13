@@ -7,8 +7,6 @@
 #include <limits.h>
 #include <time.h>
 
-#define MAX_RESULTS 256
-
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 
@@ -28,7 +26,9 @@
 #include "nuklear.h"
 #include "nuklear_d3d11.h"
 
+#include "utils.h"
 #include "windows/process.h"
+#include "windows/memory.h"
 
 static IDXGISwapChain *swap_chain;
 static ID3D11Device *device;
@@ -95,40 +95,6 @@ WindowProc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
     return DefWindowProcW(wnd, msg, wparam, lparam);
 }
 
-/* GUI Struct */
-typedef struct
-{
-    void *address;
-    char value[32];
-    char previous_value[32];
-    int freeze;
-} MemoryEntry;
-
-typedef struct
-{
-    MemoryEntry results[MAX_RESULTS];
-    size_t result_count;
-    MemoryEntry selected[MAX_RESULTS];
-    size_t selected_count;
-} MemoryTable;
-
-typedef enum
-{
-    SCAN_EXACT_VALUE,
-    SCAN_BIGGER_THAN,
-    SCAN_SMALLER_THAN,
-    SCAN_VALUE_BETWEEN,
-    SCAN_UNKNOWN_INITIAL
-} ScanType;
-
-typedef enum
-{
-    VALUE_BYTE,
-    VALUE_2BYTES,
-    VALUE_4BYTES,
-    VALUE_8BYTES
-} ValueType;
-
 /* GUI Variables */
 int width;
 int height;
@@ -138,13 +104,8 @@ float modal_height;
 float modal_x;
 float modal_y;
 
-int show_processes_list = 0;
-char current_process_name[MAX_NAME_LEN];
-
-static int selected_scan_type = SCAN_EXACT_VALUE;
-static int selected_value_type = VALUE_4BYTES;
-
-MemoryTable memory_table;
+int show_processes_list;
+char *current_process_name;
 
 /* GUI Functions Declarations */
 void show_menubar(struct nk_context *ctx);
@@ -175,7 +136,7 @@ void show_menubar(struct nk_context *ctx)
         }
         if (nk_menu_item_label(ctx, "Close current", NK_TEXT_LEFT))
         {
-            strcpy_s(current_process_name, sizeof(current_process_name), "");
+            strcpy_s(current_process_name, sizeof(MAX_NAME_LEN), "");
             selected_process = -1;
         }
         nk_menu_end(ctx);
@@ -222,22 +183,20 @@ void show_combobox(struct nk_context *ctx)
     }
 
     // Value text input
-    static char search_value[64];
-    static int value_len = 0;
-    nk_edit_string(ctx, NK_EDIT_FIELD, search_value, &value_len, sizeof(search_value), nk_filter_ascii);
+    nk_edit_string(ctx, NK_EDIT_FIELD, search_value, &search_value_len, MAX_NAME_LEN, nk_filter_ascii);
 
     // Buttons for scan operations
     if (nk_button_label(ctx, "Scan"))
     {
-        // Trigger scan logic
+        if (selected_process >= 0 && strlen(search_value) > 0)
+        {
+            HANDLE process_handle = processes[selected_process].handle;
+            start_memory_scan(process_handle, selected_value_type, selected_scan_type, &memory_table);
+        }
     }
     if (nk_button_label(ctx, "Next Scan"))
     {
         // Trigger next scan logic
-    }
-    if (nk_button_label(ctx, "Previous Scan"))
-    {
-        // Trigger previous scan logic
     }
 }
 
@@ -247,11 +206,16 @@ void init_memory_table(MemoryTable *table)
     memset(table, 0, sizeof(MemoryTable));
 
     // Initialize counts to zero
+    table->selection_count = 0;
+    table->selection_capacity = MAX_RESULTS;
+    table->selection = malloc(table->selection_capacity * sizeof(MemoryEntry));
+
     table->result_count = 0;
-    table->selected_count = 0;
+    table->result_capacity = MAX_RESULTS;
+    table->results = malloc(table->result_capacity * sizeof(MemoryEntry));
 }
 
-void show_tables(struct nk_context *ctx, MemoryTable *memory_table)
+void show_tables(struct nk_context *ctx, MemoryTable *table)
 {
     // Read-only Table
     nk_layout_row_dynamic(ctx, 200, 1);
@@ -262,22 +226,26 @@ void show_tables(struct nk_context *ctx, MemoryTable *memory_table)
         nk_label(ctx, "Value", NK_TEXT_CENTERED);
         nk_label(ctx, "Previous Value", NK_TEXT_CENTERED);
 
-        for (size_t i = 0; i < memory_table->result_count; i++)
+        for (size_t i = 0; i < table->result_count; i++)
         {
-            MemoryEntry *entry = &memory_table->results[i];
+            MemoryEntry *entry = &table->results[i];
             nk_layout_row_dynamic(ctx, 25, 3);
-            nk_label(ctx, entry->address, NK_TEXT_CENTERED);
-            nk_label(ctx, entry->value, NK_TEXT_CENTERED);
-            nk_label(ctx, entry->previous_value, NK_TEXT_CENTERED);
+
+            char addr_str[20];
+            snprintf(addr_str, sizeof(addr_str), "0x%p", entry->address);
+            nk_label(ctx, addr_str, NK_TEXT_CENTERED);
+
+            nk_label(ctx, entry->value ? entry->value : "NULL", NK_TEXT_CENTERED);
+            nk_label(ctx, entry->previous_value ? entry->previous_value : "NULL", NK_TEXT_CENTERED);
 
             // Context menu for right-click
             if (nk_contextual_begin(ctx, 0, nk_vec2(120, 60), nk_window_get_bounds(ctx)))
             {
                 if (nk_menu_item_label(ctx, "Select", NK_TEXT_CENTERED))
                 {
-                    if (memory_table->selected_count < MAX_RESULTS)
+                    if (table->selection_count < MAX_RESULTS)
                     {
-                        memory_table->selected[memory_table->selected_count++] = *entry;
+                        table->selection[table->selection_count++] = *entry;
                     }
                 }
                 nk_contextual_end(ctx);
@@ -296,21 +264,21 @@ void show_tables(struct nk_context *ctx, MemoryTable *memory_table)
         nk_label(ctx, "Previous Value", NK_TEXT_CENTERED);
         nk_label(ctx, "Freeze", NK_TEXT_CENTERED);
 
-        for (size_t i = 0; i < memory_table->selected_count; i++)
+        for (size_t i = 0; i < table->selection_count; i++)
         {
-            MemoryEntry *entry = &memory_table->selected[i];
+            MemoryEntry *entry = &table->selection[i];
             nk_layout_row_dynamic(ctx, 25, 4);
             nk_label(ctx, entry->address, NK_TEXT_CENTERED);
 
             // Editable Value
-            int length = strlen(entry->value);
+            size_t length = strlen(entry->value);
             nk_flags result = nk_edit_string(ctx, NK_EDIT_SIMPLE, entry->value, &length, sizeof(entry->value), nk_filter_ascii);
             entry->value[length] = '\0';
 
-            nk_label(ctx, entry->previous_value, NK_TEXT_CENTERED);
+            nk_label(ctx, entry->previous_value ? entry->previous_value : "NULL", NK_TEXT_CENTERED);
 
             // Freeze Checkbox
-            nk_checkbox_label(ctx, "", &entry->freeze);
+            // nk_checkbox_label(ctx, "", &entry->freeze);
         }
         nk_group_end(ctx);
     }
@@ -323,11 +291,12 @@ void show_processes_selector(struct nk_context *ctx)
         if (nk_popup_begin(ctx, NK_POPUP_STATIC, "Processes Selector", NK_WINDOW_CLOSABLE,
                            nk_rect(modal_x, modal_y, modal_width, modal_height)))
         {
-            getRunningProcesses();
+            get_running_processes();
 
             // Dynamic Process List
             nk_layout_row_dynamic(ctx, modal_height - (height / 6), 1);
-            ; // Flexible layout for the list
+
+            // Flexible layout for the list
             if (nk_group_begin(ctx, "Process List", NK_WINDOW_BORDER))
             {
                 for (int i = 0; i < process_count; ++i)
@@ -347,8 +316,7 @@ void show_processes_selector(struct nk_context *ctx)
             {
                 if (selected_process >= 0)
                 {
-                    // printf("Selected process: %s\n", processes[selected_process].name);
-                    strncpy_s(current_process_name, sizeof(current_process_name), processes[selected_process].name, MAX_NAME_LEN - 1);
+                    strncpy_s(current_process_name, MAX_NAME_LEN, processes[selected_process].name, _TRUNCATE);
                 }
                 show_processes_list = 0;
                 nk_popup_close(ctx);
@@ -361,10 +329,6 @@ void show_processes_selector(struct nk_context *ctx)
             show_processes_list = 0; // Hide modal
         }
     }
-}
-
-void show_error_modal(struct nk_context *ctx)
-{
 }
 
 int main(void)
@@ -439,6 +403,10 @@ int main(void)
         // nk_style_set_font(ctx, &roboto->handle);
     }
 
+    show_processes_list = 0;
+    current_process_name = malloc(MAX_NAME_LEN);
+
+    create_array(&memory_addresses, 100000, sizeof(LPVOID));
     init_memory_table(&memory_table);
 
     bg.r = 0.10f, bg.g = 0.18f, bg.b = 0.24f, bg.a = 1.0f;
@@ -494,6 +462,9 @@ int main(void)
         }
         assert(SUCCEEDED(hr));
     }
+
+    free_array(&memory_addresses);
+    cleanup_process_handles();
 
     ID3D11DeviceContext_ClearState(context);
     nk_d3d11_shutdown();

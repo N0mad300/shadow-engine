@@ -4,7 +4,7 @@ ProcessInfo processes[MAX_PROCESSES];
 int process_count = 0;
 int selected_process = -1;
 
-void getRunningProcesses()
+void get_running_processes()
 {
     DWORD process_ids[MAX_PROCESSES], bytes_returned;
     process_count = 0;
@@ -37,12 +37,22 @@ void getRunningProcesses()
             processes[process_count].name[MAX_NAME_LEN - 1] = '\0';
             processes[process_count].handle = hProcess;
             process_count++;
-
-            CloseHandle(hProcess);
         }
         else
         {
             CloseHandle(hProcess);
+        }
+    }
+}
+
+void cleanup_process_handles()
+{
+    for (int i = 0; i < process_count; i++)
+    {
+        if (processes[i].handle)
+        {
+            CloseHandle(processes[i].handle);
+            processes[i].handle = NULL;
         }
     }
 }

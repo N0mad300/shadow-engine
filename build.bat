@@ -32,7 +32,7 @@ fxc.exe %PS_FLAGS% %PS_SHADER_INPUT%
 
 :: Compiler Flags for Main Program
 set CL_FLAGS=/nologo /W4 /O2 /fp:precise /Gm-
-set CL_INPUT=src/main.c src/windows/process.c
+set CL_INPUT=src/main.c src/windows/process.c src/windows/memory.c src/utils.c
 set CL_OUTPUT="bin/Shadow Engine.exe"
 set CL_LIBS=user32.lib dxguid.lib d3d11.lib
 
