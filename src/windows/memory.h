@@ -12,17 +12,28 @@ typedef struct
     void *address;
     char *value;
     char *previous_value;
-} MemoryEntry;
+} ResultEntry;
 
 typedef struct
 {
-    MemoryEntry *results;
+    void *address;
+    char *value;
+    bool freeze;
+} SelectionEntry;
+
+typedef struct
+{
+    ResultEntry *results;
     size_t result_count;
     size_t result_capacity;
-    MemoryEntry *selection;
+} ResultsTable;
+
+typedef struct
+{
+    SelectionEntry *selection;
     size_t selection_count;
     size_t selection_capacity;
-} MemoryTable;
+} SelectionTable;
 
 typedef enum
 {
@@ -41,8 +52,9 @@ typedef enum
     VALUE_8BYTES
 } ValueType;
 
-extern DynamicArray memory_addresses; // Dynamic array to store all memory addresses find with scan
-extern MemoryTable memory_table;      // Memory table to store memory addresses displayed and selected in UI
+extern DynamicArray memory_addresses;  // Dynamic array to store all memory addresses find with scan
+extern ResultsTable results_table;     // Memory table to store memory addresses displayed
+extern SelectionTable selection_table; // Memory table to store memory addresses selected by user
 
 extern char previous_search_value[MAX_NAME_LEN]; // Previous value trageted by scan
 extern char search_value[MAX_NAME_LEN];          // Value the scanner is looking for
@@ -52,10 +64,18 @@ extern int selected_scan_type;                   // Scan type (0: Exact, 1: Bigg
 
 bool get_value_size(int type, size_t *value_size);
 bool parse_value(const char *input, int type, void *output);
+bool refine_results(HANDLE process_handle, LPCVOID target_value, SIZE_T value_size);
 bool scan_process_memory(HANDLE process_handle, LPCVOID target_value, SIZE_T value_size);
-bool load_results(HANDLE process_handle, MemoryTable *table, const char *search_value_str, const char *previous_search_value_str);
+bool load_results(HANDLE process_handle, ResultsTable *table, const char *search_value_str, const char *previous_search_value_str);
 
-void start_memory_scan(HANDLE process_handle, int type, int scan_type, MemoryTable *memory_table);
 void format_value(const void *value, size_t size, char *output, size_t output_size);
+void refine_memory_scan(HANDLE process_handle, ResultsTable *table);
+void start_memory_scan(HANDLE process_handle, ResultsTable *table);
+void init_selection_table(SelectionTable *table);
+void reload_results_table(ResultsTable *table);
+void clear_results_table(ResultsTable *table);
+void init_results_table(ResultsTable *table);
+
+const char *get_error_string(DWORD error_id);
 
 #endif

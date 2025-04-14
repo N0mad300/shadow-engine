@@ -38,3 +38,6 @@ set CL_LIBS=user32.lib dxguid.lib d3d11.lib
 
 :: Compile and Link
 cl %CL_FLAGS% /Fe%CL_OUTPUT% /Fo"bin/" %CL_INPUT% %CL_LIBS% /link /incremental:no
+
+:: Clean build folder
+del /f /q ".\bin\*.obj"

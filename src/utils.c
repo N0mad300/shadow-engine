@@ -62,9 +62,58 @@ void *get(DynamicArray *array, size_t index)
     return (char *)array->data + (index * array->element_size);
 }
 
+void clear_array(DynamicArray *array, size_t new_initial_capacity, size_t new_element_size)
+{
+    if (!array)
+    {
+        fprintf(stderr, "Error: NULL array passed to clear_array\n");
+        exit(EXIT_FAILURE);
+    }
+
+    free(array->data);
+    array->data = malloc(new_initial_capacity * new_element_size);
+    if (!array->data)
+    {
+        perror("Failed to allocate memory for data");
+        exit(EXIT_FAILURE);
+    }
+
+    array->size = 0;
+    array->capacity = new_initial_capacity;
+    array->element_size = new_element_size;
+}
+
 // Function to free the dynamic array
 void free_array(DynamicArray *array)
 {
     free(array->data);
     free(array);
+}
+
+void transfer_array(DynamicArray *dest, DynamicArray *src)
+{
+    if (!dest || !src)
+    {
+        fprintf(stderr, "Error: NULL array passed to transfer_array\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (dest->element_size != src->element_size)
+    {
+        fprintf(stderr, "Error: Element size mismatch in transfer_array\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Free destination's existing data
+    free(dest->data);
+
+    // Transfer ownership of data
+    dest->data = src->data;
+    dest->size = src->size;
+    dest->capacity = src->capacity;
+
+    // Invalidate source to prevent double-free
+    src->data = NULL;
+    src->size = 0;
+    src->capacity = 0;
 }

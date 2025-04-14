@@ -111,8 +111,7 @@ char *current_process_name;
 void show_menubar(struct nk_context *ctx);
 void show_combobox(struct nk_context *ctx);
 
-void init_memory_table(MemoryTable *table);
-void show_tables(struct nk_context *ctx, MemoryTable *memory_table);
+void show_tables(struct nk_context *ctx, ResultsTable *memory_table, SelectionTable *s_table);
 
 void show_processes_selector(struct nk_context *ctx);
 void show_error_modal(struct nk_context *ctx);
@@ -191,31 +190,20 @@ void show_combobox(struct nk_context *ctx)
         if (selected_process >= 0 && strlen(search_value) > 0)
         {
             HANDLE process_handle = processes[selected_process].handle;
-            start_memory_scan(process_handle, selected_value_type, selected_scan_type, &memory_table);
+            start_memory_scan(process_handle, &results_table);
         }
     }
     if (nk_button_label(ctx, "Next Scan"))
     {
-        // Trigger next scan logic
+        if (selected_process >= 0 && strlen(search_value) > 0)
+        {
+            HANDLE process_handle = processes[selected_process].handle;
+            refine_memory_scan(process_handle, &results_table);
+        }
     }
 }
 
-void init_memory_table(MemoryTable *table)
-{
-    // Clear all entries in the results and selected arrays
-    memset(table, 0, sizeof(MemoryTable));
-
-    // Initialize counts to zero
-    table->selection_count = 0;
-    table->selection_capacity = MAX_RESULTS;
-    table->selection = malloc(table->selection_capacity * sizeof(MemoryEntry));
-
-    table->result_count = 0;
-    table->result_capacity = MAX_RESULTS;
-    table->results = malloc(table->result_capacity * sizeof(MemoryEntry));
-}
-
-void show_tables(struct nk_context *ctx, MemoryTable *table)
+void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *s_table)
 {
     // Read-only Table
     nk_layout_row_dynamic(ctx, 200, 1);
@@ -226,9 +214,9 @@ void show_tables(struct nk_context *ctx, MemoryTable *table)
         nk_label(ctx, "Value", NK_TEXT_CENTERED);
         nk_label(ctx, "Previous Value", NK_TEXT_CENTERED);
 
-        for (size_t i = 0; i < table->result_count; i++)
+        for (size_t i = 0; i < r_table->result_count; i++)
         {
-            MemoryEntry *entry = &table->results[i];
+            ResultEntry *entry = &r_table->results[i];
             nk_layout_row_dynamic(ctx, 25, 3);
 
             char addr_str[20];
@@ -237,19 +225,6 @@ void show_tables(struct nk_context *ctx, MemoryTable *table)
 
             nk_label(ctx, entry->value ? entry->value : "NULL", NK_TEXT_CENTERED);
             nk_label(ctx, entry->previous_value ? entry->previous_value : "NULL", NK_TEXT_CENTERED);
-
-            // Context menu for right-click
-            if (nk_contextual_begin(ctx, 0, nk_vec2(120, 60), nk_window_get_bounds(ctx)))
-            {
-                if (nk_menu_item_label(ctx, "Select", NK_TEXT_CENTERED))
-                {
-                    if (table->selection_count < MAX_RESULTS)
-                    {
-                        table->selection[table->selection_count++] = *entry;
-                    }
-                }
-                nk_contextual_end(ctx);
-            }
         }
         nk_group_end(ctx);
     }
@@ -258,16 +233,15 @@ void show_tables(struct nk_context *ctx, MemoryTable *table)
     nk_layout_row_dynamic(ctx, 200, 1);
     if (nk_group_begin(ctx, "Selected Addresses", NK_WINDOW_BORDER | NK_WINDOW_TITLE))
     {
-        nk_layout_row_dynamic(ctx, 25, 4);
+        nk_layout_row_dynamic(ctx, 25, 3);
         nk_label(ctx, "Address", NK_TEXT_CENTERED);
         nk_label(ctx, "Value", NK_TEXT_CENTERED);
-        nk_label(ctx, "Previous Value", NK_TEXT_CENTERED);
         nk_label(ctx, "Freeze", NK_TEXT_CENTERED);
 
-        for (size_t i = 0; i < table->selection_count; i++)
+        for (size_t i = 0; i < s_table->selection_count; i++)
         {
-            MemoryEntry *entry = &table->selection[i];
-            nk_layout_row_dynamic(ctx, 25, 4);
+            SelectionEntry *entry = &s_table->selection[i];
+            nk_layout_row_dynamic(ctx, 25, 3);
             nk_label(ctx, entry->address, NK_TEXT_CENTERED);
 
             // Editable Value
@@ -275,10 +249,8 @@ void show_tables(struct nk_context *ctx, MemoryTable *table)
             nk_flags result = nk_edit_string(ctx, NK_EDIT_SIMPLE, entry->value, &length, sizeof(entry->value), nk_filter_ascii);
             entry->value[length] = '\0';
 
-            nk_label(ctx, entry->previous_value ? entry->previous_value : "NULL", NK_TEXT_CENTERED);
-
             // Freeze Checkbox
-            // nk_checkbox_label(ctx, "", &entry->freeze);
+            nk_checkbox_label(ctx, "", &entry->freeze);
         }
         nk_group_end(ctx);
     }
@@ -407,7 +379,8 @@ int main(void)
     current_process_name = malloc(MAX_NAME_LEN);
 
     create_array(&memory_addresses, 100000, sizeof(LPVOID));
-    init_memory_table(&memory_table);
+    init_selection_table(&selection_table);
+    init_results_table(&results_table);
 
     bg.r = 0.10f, bg.g = 0.18f, bg.b = 0.24f, bg.a = 1.0f;
     while (running)
@@ -440,7 +413,7 @@ int main(void)
         {
             show_menubar(ctx);
             show_combobox(ctx);
-            show_tables(ctx, &memory_table);
+            show_tables(ctx, &results_table, &selection_table);
 
             show_processes_selector(ctx);
         }
