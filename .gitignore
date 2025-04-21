@@ -1,3 +1,6 @@
 bin/
 obj/
 .vscode/
+
+src/nuklear_d3d11_pixel_shader.h
+src/nuklear_d3d11_vertex_shader.h

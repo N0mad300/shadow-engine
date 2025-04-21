@@ -26,9 +26,10 @@
 #include "nuklear.h"
 #include "nuklear_d3d11.h"
 
+#include "dynamic_array.h"
+#include "process.h"
+#include "memory.h"
 #include "utils.h"
-#include "windows/process.h"
-#include "windows/memory.h"
 
 static IDXGISwapChain *swap_chain;
 static ID3D11Device *device;
@@ -96,25 +97,23 @@ WindowProc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
 }
 
 /* GUI Variables */
-int width;
-int height;
+static int width;
+static int height;
+static int selected_row;
+static int show_processes_list;
 
-float modal_width;
-float modal_height;
-float modal_x;
-float modal_y;
+static float modal_width;
+static float modal_height;
+static float modal_x;
+static float modal_y;
 
-int show_processes_list;
 char *current_process_name;
 
 /* GUI Functions Declarations */
 void show_menubar(struct nk_context *ctx);
 void show_combobox(struct nk_context *ctx);
-
-void show_tables(struct nk_context *ctx, ResultsTable *memory_table, SelectionTable *s_table);
-
 void show_processes_selector(struct nk_context *ctx);
-void show_error_modal(struct nk_context *ctx);
+void show_tables(struct nk_context *ctx, ResultsTable *memory_table, SelectionTable *s_table);
 
 /* GUI Functions Definitions */
 void show_menubar(struct nk_context *ctx)
@@ -205,6 +204,9 @@ void show_combobox(struct nk_context *ctx)
 
 void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *s_table)
 {
+    static int context_menu_row = -1;
+    static struct nk_vec2 context_menu_pos;
+
     // Read-only Table
     nk_layout_row_dynamic(ctx, 200, 1);
     if (nk_group_begin(ctx, "Scan Results", NK_WINDOW_BORDER | NK_WINDOW_TITLE))
@@ -214,19 +216,117 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
         nk_label(ctx, "Value", NK_TEXT_CENTERED);
         nk_label(ctx, "Previous Value", NK_TEXT_CENTERED);
 
+        static int selected_row = -1;
+
         for (size_t i = 0; i < r_table->result_count; i++)
         {
             ResultEntry *entry = &r_table->results[i];
             nk_layout_row_dynamic(ctx, 25, 3);
 
+            nk_bool is_selected = (selected_row == (int)i);
+
+            struct nk_style_selectable selectable_style_backup = ctx->style.selectable;
+            struct nk_style_window window_style_backup = ctx->style.window;
+
+            ctx->style.window.spacing = nk_vec2(0, 0);
+            ctx->style.window.padding = nk_vec2(0, 0);
+
+            // Modify style for selected row
+            if (is_selected)
+            {
+                ctx->style.selectable.normal = nk_style_item_color(nk_rgb(35, 35, 35)); // Yellow
+                ctx->style.selectable.hover = ctx->style.selectable.normal;
+            }
+
             char addr_str[20];
             snprintf(addr_str, sizeof(addr_str), "0x%p", entry->address);
-            nk_label(ctx, addr_str, NK_TEXT_CENTERED);
 
-            nk_label(ctx, entry->value ? entry->value : "NULL", NK_TEXT_CENTERED);
-            nk_label(ctx, entry->previous_value ? entry->previous_value : "NULL", NK_TEXT_CENTERED);
+            // Create selectable labels
+            nk_bool addr_clicked = nk_selectable_label(ctx, addr_str, NK_TEXT_CENTERED, &is_selected);
+            nk_bool value_clicked = nk_selectable_label(ctx, entry->value ? entry->value : "NULL", NK_TEXT_CENTERED, &is_selected);
+            nk_bool prev_clicked = nk_selectable_label(ctx, entry->previous_value ? entry->previous_value : "NULL", NK_TEXT_CENTERED, &is_selected);
+
+            // Check for right-clicks on any cell in the row
+            if (ctx->input.mouse.buttons[NK_BUTTON_RIGHT].clicked)
+            {
+                context_menu_row = (int)i;
+                context_menu_pos = ctx->input.mouse.pos;
+            }
+
+            // Restore original style
+            ctx->style.selectable = selectable_style_backup;
+            ctx->style.window = window_style_backup;
+
+            // Update selection if any cell was clicked
+            if (addr_clicked || value_clicked || prev_clicked)
+            {
+                selected_row = (int)i;
+            }
         }
         nk_group_end(ctx);
+    }
+
+    // Display context menu if right-clicked on a row
+    if (context_menu_row >= 0)
+    {
+        // Convert to screen coordinates for popup positioning
+        if (nk_popup_begin(ctx, NK_POPUP_DYNAMIC, "row_context_menu",
+                           NK_WINDOW_NO_SCROLLBAR,
+                           nk_rect(context_menu_pos.x, context_menu_pos.y, 150, 100)))
+        {
+            nk_layout_row_dynamic(ctx, 25, 1);
+
+            // Menu items - customize these as needed
+            if (nk_menu_item_label(ctx, "Copy Address", NK_TEXT_LEFT))
+            {
+                // TODO : Find why the address copied to clipboard
+                // isn't the same as the one display in the table
+                char addr_str[20];
+                ResultEntry *entry = &r_table->results[context_menu_row];
+                printf("Copying to clipboard address: %p", entry->address);
+                snprintf(addr_str, sizeof(addr_str), "0x%p", entry->address);
+                copy_to_clipboard(addr_str);
+
+                context_menu_row = -1;
+                nk_popup_close(ctx);
+            }
+
+            if (nk_menu_item_label(ctx, "Copy Value", NK_TEXT_LEFT))
+            {
+                ResultEntry *entry = &r_table->results[context_menu_row];
+                copy_to_clipboard(entry->value);
+
+                context_menu_row = -1;
+                nk_popup_close(ctx);
+            }
+
+            if (nk_menu_item_label(ctx, "Add to Selection", NK_TEXT_LEFT))
+            {
+                if (context_menu_row < r_table->result_count && s_table->selection_count < s_table->selection_capacity)
+                {
+                    SelectionEntry entry = {
+                        .address = r_table->results[context_menu_row].address,
+                        .freeze = false,
+                        .value = r_table->results[context_menu_row].value ? strdup(r_table->results[context_menu_row].value) : strdup("")};
+
+                    if (entry.value)
+                    {
+                        s_table->selection[s_table->selection_count] = entry;
+                        s_table->selection_count++;
+                    }
+                }
+
+                context_menu_row = -1;
+                nk_popup_close(ctx);
+            }
+
+            nk_popup_end(ctx);
+        }
+        else
+        {
+            // If popup is closed, reset context menu row
+            context_menu_row = -1;
+        }
     }
 
     // Editable Table for Selected Addresses
@@ -242,7 +342,10 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
         {
             SelectionEntry *entry = &s_table->selection[i];
             nk_layout_row_dynamic(ctx, 25, 3);
-            nk_label(ctx, entry->address, NK_TEXT_CENTERED);
+
+            char addr_str[20];
+            snprintf(addr_str, sizeof(addr_str), "0x%p", entry->address);
+            nk_label(ctx, addr_str, NK_TEXT_CENTERED);
 
             // Editable Value
             size_t length = strlen(entry->value);
@@ -250,7 +353,7 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
             entry->value[length] = '\0';
 
             // Freeze Checkbox
-            nk_checkbox_label(ctx, "", &entry->freeze);
+            nk_checkbox_label_align(ctx, "", &entry->freeze, NK_WIDGET_CENTERED, NK_TEXT_CENTERED);
         }
         nk_group_end(ctx);
     }
@@ -375,6 +478,7 @@ int main(void)
         // nk_style_set_font(ctx, &roboto->handle);
     }
 
+    selected_row = -1;
     show_processes_list = 0;
     current_process_name = malloc(MAX_NAME_LEN);
 

@@ -5,7 +5,7 @@
 #include <psapi.h>
 #include <string.h>
 
-#include "../utils.h"
+#include "dynamic_array.h"
 
 #define MAX_RESULTS 1024
 #define MAX_PROCESSES 1024
