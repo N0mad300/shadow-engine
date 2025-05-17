@@ -19,8 +19,6 @@ typedef struct
     void *address;
     char *value;
     int length;
-    char *previous_value;
-    int previous_length;
     bool freeze;
 } SelectionEntry;
 

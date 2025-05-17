@@ -54,11 +54,8 @@ void clear_selection_table(SelectionTable *table)
     for (size_t i = 0; i < table->selection_count; i++)
     {
         free(table->selection[i].value);
-        free(table->selection[i].previous_value);
         table->selection[i].value = NULL;
-        table->selection[i].previous_value = NULL;
         table->selection[i].length = 0;
-        table->selection[i].previous_length = 0;
     }
     table->selection_count = 0;
 }

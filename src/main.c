@@ -49,7 +49,7 @@ static float modal_y;
 
 static char *current_process_name;
 
-static bool g_enter_pressed_this_frame = false;
+static bool enter_key_pressed = false;
 
 static void
 set_swap_chain_size(int width, int height)
@@ -93,7 +93,7 @@ WindowProc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
     case WM_KEYDOWN:
         if (wparam == VK_RETURN)
         {
-            g_enter_pressed_this_frame = true;
+            enter_key_pressed = true;
         }
         break;
 
@@ -216,7 +216,6 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
     static int context_menu_row = -1;
     static struct nk_vec2 context_menu_pos;
 
-    // Read-only Table
     nk_layout_row_dynamic(ctx, 200, 1);
     if (nk_group_begin(ctx, "Scan Results", NK_WINDOW_BORDER | NK_WINDOW_TITLE))
     {
@@ -237,27 +236,36 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
             struct nk_style_selectable selectable_style_backup = ctx->style.selectable;
             struct nk_style_window window_style_backup = ctx->style.window;
 
-            ctx->style.window.spacing = nk_vec2(0, 0);
-            ctx->style.window.padding = nk_vec2(0, 0);
+            ctx->style.window.spacing.x = 0;
+            ctx->style.window.padding.x = 0;
 
             // Modify style for selected row
             if (is_selected)
             {
-                ctx->style.selectable.normal = nk_style_item_color(nk_rgb(35, 35, 35)); // Yellow
+                ctx->style.selectable.normal = nk_style_item_color(nk_rgb(35, 35, 35));
                 ctx->style.selectable.hover = ctx->style.selectable.normal;
             }
 
             char addr_str[20];
             snprintf(addr_str, sizeof(addr_str), "0x%p", entry->address);
 
+            struct nk_rect bounds_addr, bounds_value, bounds_prev;
+
             // Create selectable labels
             nk_bool addr_clicked = nk_selectable_label(ctx, addr_str, NK_TEXT_CENTERED, &is_selected);
-            nk_bool value_clicked = nk_selectable_label(ctx, entry->value ? entry->value : "NULL", NK_TEXT_CENTERED, &is_selected);
-            nk_bool prev_clicked = nk_selectable_label(ctx, entry->previous_value ? entry->previous_value : "NULL", NK_TEXT_CENTERED, &is_selected);
+            bounds_addr = nk_widget_bounds(ctx);
 
-            // Check for right-clicks on any cell in the row
-            if (ctx->input.mouse.buttons[NK_BUTTON_RIGHT].clicked)
+            nk_bool value_clicked = nk_selectable_label(ctx, entry->value ? entry->value : "NULL", NK_TEXT_CENTERED, &is_selected);
+            bounds_value = nk_widget_bounds(ctx);
+
+            nk_bool prev_clicked = nk_selectable_label(ctx, entry->previous_value ? entry->previous_value : "NULL", NK_TEXT_CENTERED, &is_selected);
+            bounds_prev = nk_widget_bounds(ctx);
+
+            if (nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, bounds_addr) ||
+                nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, bounds_value) ||
+                nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, bounds_prev))
             {
+                printf("Row %d selected", (int)i);
                 context_menu_row = (int)i;
                 context_menu_pos = ctx->input.mouse.pos;
             }
@@ -285,7 +293,6 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
         {
             nk_layout_row_dynamic(ctx, 25, 1);
 
-            // Menu items - customize these as needed
             if (nk_menu_item_label(ctx, "Copy Address", NK_TEXT_LEFT))
             {
                 // TODO : Find why the address copied to clipboard
@@ -320,8 +327,6 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
                     };
 
                     entry.length = strlen(entry.value);
-                    entry.previous_value = strdup(entry.value);
-                    entry.previous_length = strlen(entry.previous_value);
 
                     if (entry.value)
                     {
@@ -333,12 +338,10 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
                 context_menu_row = -1;
                 nk_popup_close(ctx);
             }
-
             nk_popup_end(ctx);
         }
         else
         {
-            // If popup is closed, reset context menu row
             context_menu_row = -1;
         }
     }
@@ -357,6 +360,7 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
             SelectionEntry *entry = &s_table->selection[i];
             nk_layout_row_dynamic(ctx, 25, 3);
 
+            // Memory address
             char addr_str[20];
             snprintf(addr_str, sizeof(addr_str), "0x%p", entry->address);
             nk_label(ctx, addr_str, NK_TEXT_CENTERED);
@@ -365,21 +369,10 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
             nk_flags result = nk_edit_string(ctx, NK_EDIT_SIMPLE, entry->value, &entry->length, MAX_NAME_LEN - 1, nk_filter_default);
             entry->value[entry->length] = '\0';
 
-            if (g_enter_pressed_this_frame && (result & NK_EDIT_ACTIVE))
+            if (enter_key_pressed && (result & NK_EDIT_ACTIVE))
             {
                 printf("Row %d text changed to: '%s' (Length: %d)\n", i, entry->value, entry->length);
             }
-
-            /*
-            if (strcmp(entry->value, entry->previous_value) != 0 || entry->length != entry->previous_length)
-            {
-                printf("Row %d text changed to: '%s' (Length: %d)\n", i, entry->value, entry->length);
-
-                strncpy(entry->previous_value, entry->value, MAX_NAME_LEN - 1);
-                entry->previous_value[MAX_NAME_LEN - 1] = '\0';
-                entry->previous_length = entry->length;
-            }
-            */
 
             // Freeze Checkbox
             nk_checkbox_label_align(ctx, "", &entry->freeze, NK_WIDGET_CENTERED, NK_TEXT_CENTERED);
@@ -518,7 +511,7 @@ int main(void)
     bg.r = 0.10f, bg.g = 0.18f, bg.b = 0.24f, bg.a = 1.0f;
     while (running)
     {
-        g_enter_pressed_this_frame = false;
+        enter_key_pressed = false;
 
         /* Input */
         MSG msg;
