@@ -22,6 +22,7 @@ bool copy_to_clipboard(const char *str)
     EmptyClipboard();
     SetClipboardData(CF_TEXT, hMem);
     CloseClipboard();
+    GlobalFree(hMem);
 
     return 1;
 }

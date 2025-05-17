@@ -12,6 +12,8 @@ int selected_scan_type = SCAN_EXACT_VALUE;
 
 void init_results_table(ResultsTable *table)
 {
+    clear_results_table(table);
+
     // Clear all entries in the results and selected arrays
     memset(table, 0, sizeof(ResultsTable));
 
@@ -27,6 +29,8 @@ void clear_results_table(ResultsTable *table)
     {
         free(table->results[i].value);
         free(table->results[i].previous_value);
+        table->results[i].value = NULL;
+        table->results[i].previous_value = NULL;
     }
 
     table->result_count = 0;
@@ -34,6 +38,8 @@ void clear_results_table(ResultsTable *table)
 
 void init_selection_table(SelectionTable *table)
 {
+    clear_selection_table(table);
+
     // Clear all entries in the results and selected arrays
     memset(table, 0, sizeof(SelectionTable));
 
@@ -41,6 +47,20 @@ void init_selection_table(SelectionTable *table)
     table->selection_count = 0;
     table->selection_capacity = MAX_RESULTS;
     table->selection = malloc(table->selection_capacity * sizeof(SelectionEntry));
+}
+
+void clear_selection_table(SelectionTable *table)
+{
+    for (size_t i = 0; i < table->selection_count; i++)
+    {
+        free(table->selection[i].value);
+        free(table->selection[i].previous_value);
+        table->selection[i].value = NULL;
+        table->selection[i].previous_value = NULL;
+        table->selection[i].length = 0;
+        table->selection[i].previous_length = 0;
+    }
+    table->selection_count = 0;
 }
 
 void format_value(const void *value, size_t size, char *output, size_t output_size)

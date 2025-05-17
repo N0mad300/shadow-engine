@@ -87,7 +87,10 @@ void clear_array(DynamicArray *array, size_t new_initial_capacity, size_t new_el
 void free_array(DynamicArray *array)
 {
     free(array->data);
-    free(array);
+    array->data = NULL;
+    array->size = 0;
+    array->capacity = 0;
+    array->element_size = 0;
 }
 
 void transfer_array(DynamicArray *dest, DynamicArray *src)

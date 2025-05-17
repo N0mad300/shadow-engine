@@ -6,6 +6,8 @@ int selected_process = -1;
 
 void get_running_processes()
 {
+    cleanup_process_handles();
+
     DWORD process_ids[MAX_PROCESSES], bytes_returned;
     process_count = 0;
 

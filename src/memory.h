@@ -18,6 +18,9 @@ typedef struct
 {
     void *address;
     char *value;
+    int length;
+    char *previous_value;
+    int previous_length;
     bool freeze;
 } SelectionEntry;
 
@@ -72,7 +75,7 @@ void format_value(const void *value, size_t size, char *output, size_t output_si
 void refine_memory_scan(HANDLE process_handle, ResultsTable *table);
 void start_memory_scan(HANDLE process_handle, ResultsTable *table);
 void init_selection_table(SelectionTable *table);
-void reload_results_table(ResultsTable *table);
+void clear_selection_table(SelectionTable *table);
 void clear_results_table(ResultsTable *table);
 void init_results_table(ResultsTable *table);
 

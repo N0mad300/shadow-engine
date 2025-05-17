@@ -36,6 +36,21 @@ static ID3D11Device *device;
 static ID3D11DeviceContext *context;
 static ID3D11RenderTargetView *rt_view;
 
+/* GUI Variables */
+static int width;
+static int height;
+static int selected_row;
+static int show_processes_list;
+
+static float modal_width;
+static float modal_height;
+static float modal_x;
+static float modal_y;
+
+static char *current_process_name;
+
+static bool g_enter_pressed_this_frame = false;
+
 static void
 set_swap_chain_size(int width, int height)
 {
@@ -75,6 +90,13 @@ WindowProc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
     switch (msg)
     {
+    case WM_KEYDOWN:
+        if (wparam == VK_RETURN)
+        {
+            g_enter_pressed_this_frame = true;
+        }
+        break;
+
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
@@ -95,19 +117,6 @@ WindowProc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
     return DefWindowProcW(wnd, msg, wparam, lparam);
 }
-
-/* GUI Variables */
-static int width;
-static int height;
-static int selected_row;
-static int show_processes_list;
-
-static float modal_width;
-static float modal_height;
-static float modal_x;
-static float modal_y;
-
-char *current_process_name;
 
 /* GUI Functions Declarations */
 void show_menubar(struct nk_context *ctx);
@@ -307,7 +316,12 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
                     SelectionEntry entry = {
                         .address = r_table->results[context_menu_row].address,
                         .freeze = false,
-                        .value = r_table->results[context_menu_row].value ? strdup(r_table->results[context_menu_row].value) : strdup("")};
+                        .value = r_table->results[context_menu_row].value ? strdup(r_table->results[context_menu_row].value) : strdup(""),
+                    };
+
+                    entry.length = strlen(entry.value);
+                    entry.previous_value = strdup(entry.value);
+                    entry.previous_length = strlen(entry.previous_value);
 
                     if (entry.value)
                     {
@@ -348,9 +362,24 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
             nk_label(ctx, addr_str, NK_TEXT_CENTERED);
 
             // Editable Value
-            size_t length = strlen(entry->value);
-            nk_flags result = nk_edit_string(ctx, NK_EDIT_SIMPLE, entry->value, &length, sizeof(entry->value), nk_filter_ascii);
-            entry->value[length] = '\0';
+            nk_flags result = nk_edit_string(ctx, NK_EDIT_SIMPLE, entry->value, &entry->length, MAX_NAME_LEN - 1, nk_filter_default);
+            entry->value[entry->length] = '\0';
+
+            if (g_enter_pressed_this_frame && (result & NK_EDIT_ACTIVE))
+            {
+                printf("Row %d text changed to: '%s' (Length: %d)\n", i, entry->value, entry->length);
+            }
+
+            /*
+            if (strcmp(entry->value, entry->previous_value) != 0 || entry->length != entry->previous_length)
+            {
+                printf("Row %d text changed to: '%s' (Length: %d)\n", i, entry->value, entry->length);
+
+                strncpy(entry->previous_value, entry->value, MAX_NAME_LEN - 1);
+                entry->previous_value[MAX_NAME_LEN - 1] = '\0';
+                entry->previous_length = entry->length;
+            }
+            */
 
             // Freeze Checkbox
             nk_checkbox_label_align(ctx, "", &entry->freeze, NK_WIDGET_CENTERED, NK_TEXT_CENTERED);
@@ -489,6 +518,8 @@ int main(void)
     bg.r = 0.10f, bg.g = 0.18f, bg.b = 0.24f, bg.a = 1.0f;
     while (running)
     {
+        g_enter_pressed_this_frame = false;
+
         /* Input */
         MSG msg;
         nk_input_begin(ctx);
@@ -540,7 +571,12 @@ int main(void)
         assert(SUCCEEDED(hr));
     }
 
+    free(current_process_name);
     free_array(&memory_addresses);
+    clear_results_table(&results_table);
+    clear_selection_table(&selection_table);
+    free(results_table.results);
+    free(selection_table.selection);
     cleanup_process_handles();
 
     ID3D11DeviceContext_ClearState(context);
