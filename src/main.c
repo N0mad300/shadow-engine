@@ -300,50 +300,64 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
                            NK_WINDOW_NO_SCROLLBAR,
                            nk_rect(context_menu_pos.x, context_menu_pos.y, 150, 100)))
         {
-            nk_layout_row_dynamic(ctx, 25, 1);
-
-            if (nk_menu_item_label(ctx, "Copy Address", NK_TEXT_LEFT))
+            int close_popup = 0;
+            if (nk_input_is_mouse_pressed(&ctx->input, NK_BUTTON_LEFT) && !nk_window_is_hovered(ctx))
             {
-                char addr_str[20];
-                ResultEntry *entry = &r_table->results[context_menu_row];
-                printf("Copying to clipboard address: %p", entry->address);
-                snprintf(addr_str, sizeof(addr_str), "0x%p", entry->address);
-                copy_to_clipboard(addr_str);
+                close_popup = 1;
+            }
 
+            if (close_popup)
+            {
                 context_menu_row = -1;
                 nk_popup_close(ctx);
             }
-
-            if (nk_menu_item_label(ctx, "Copy Value", NK_TEXT_LEFT))
+            else
             {
-                ResultEntry *entry = &r_table->results[context_menu_row];
-                copy_to_clipboard(entry->value);
+                nk_layout_row_dynamic(ctx, 25, 1);
 
-                context_menu_row = -1;
-                nk_popup_close(ctx);
-            }
-
-            if (nk_menu_item_label(ctx, "Add to Selection", NK_TEXT_LEFT))
-            {
-                if (context_menu_row < r_table->result_count && s_table->selection_count < s_table->selection_capacity)
+                if (nk_menu_item_label(ctx, "Copy Address", NK_TEXT_LEFT))
                 {
-                    SelectionEntry entry = {
-                        .address = r_table->results[context_menu_row].address,
-                        .freeze = false,
-                        .value = r_table->results[context_menu_row].value ? strdup(r_table->results[context_menu_row].value) : strdup(""),
-                    };
+                    char addr_str[20];
+                    ResultEntry *entry = &r_table->results[context_menu_row];
+                    printf("Copying to clipboard address: %p", entry->address);
+                    snprintf(addr_str, sizeof(addr_str), "0x%p", entry->address);
+                    copy_to_clipboard(addr_str);
 
-                    entry.length = strlen(entry.value);
-
-                    if (entry.value)
-                    {
-                        s_table->selection[s_table->selection_count] = entry;
-                        s_table->selection_count++;
-                    }
+                    context_menu_row = -1;
+                    nk_popup_close(ctx);
                 }
 
-                context_menu_row = -1;
-                nk_popup_close(ctx);
+                if (nk_menu_item_label(ctx, "Copy Value", NK_TEXT_LEFT))
+                {
+                    ResultEntry *entry = &r_table->results[context_menu_row];
+                    copy_to_clipboard(entry->value);
+
+                    context_menu_row = -1;
+                    nk_popup_close(ctx);
+                }
+
+                if (nk_menu_item_label(ctx, "Add to Selection", NK_TEXT_LEFT))
+                {
+                    if (context_menu_row < r_table->result_count && s_table->selection_count < s_table->selection_capacity)
+                    {
+                        SelectionEntry entry = {
+                            .address = r_table->results[context_menu_row].address,
+                            .freeze = false,
+                            .value = r_table->results[context_menu_row].value ? strdup(r_table->results[context_menu_row].value) : strdup(""),
+                        };
+
+                        entry.length = strlen(entry.value);
+
+                        if (entry.value)
+                        {
+                            s_table->selection[s_table->selection_count] = entry;
+                            s_table->selection_count++;
+                        }
+                    }
+
+                    context_menu_row = -1;
+                    nk_popup_close(ctx);
+                }
             }
             nk_popup_end(ctx);
         }
