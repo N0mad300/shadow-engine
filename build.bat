@@ -34,7 +34,7 @@ fxc.exe %PS_FLAGS% %PS_SHADER_INPUT%
 set CL_FLAGS=/nologo /W4 /O2 /fp:precise /Gm-
 set CL_INPUT=src/main.c src/process.c src/memory.c src/dynamic_array.c src/utils.c
 set CL_OUTPUT="bin/Shadow Engine.exe"
-set CL_LIBS=user32.lib dxguid.lib d3d11.lib
+set CL_LIBS=user32.lib dxguid.lib d3d11.lib shell32.lib
 
 :: Compile and Link
 cl %CL_FLAGS% /Fe%CL_OUTPUT% /Fo"bin/" %CL_INPUT% %CL_LIBS% /link /incremental:no

@@ -1,6 +1,7 @@
 #define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <shellapi.h>
 #include <d3d11.h>
 #include <stdio.h>
 #include <string.h>
@@ -39,6 +40,7 @@ static ID3D11RenderTargetView *rt_view;
 /* GUI Variables */
 static int width;
 static int height;
+static int show_about;
 static int selected_row;
 static int show_processes_list;
 
@@ -155,9 +157,11 @@ void show_menubar(struct nk_context *ctx)
         nk_layout_row_dynamic(ctx, 25, 1);
         if (nk_menu_item_label(ctx, "About", NK_TEXT_LEFT))
         {
+            show_about = 1;
         }
         if (nk_menu_item_label(ctx, "GitHub", NK_TEXT_LEFT))
         {
+            ShellExecuteW(NULL, L"open", L"https://github.com/N0mad300/shadow-engine", NULL, NULL, SW_SHOWNORMAL);
         }
         nk_menu_end(ctx);
     }
@@ -428,6 +432,26 @@ void show_processes_selector(struct nk_context *ctx)
     }
 }
 
+void show_about_modal(struct nk_context *ctx)
+{
+    if (show_about)
+    {
+        if (nk_popup_begin(ctx, NK_POPUP_STATIC, "About", NK_WINDOW_CLOSABLE,
+                           nk_rect((width - (modal_width / 2)) / 2, (height - (modal_height / 2)) / 2.5, modal_width / 2, modal_height / 2)))
+        {
+            nk_layout_row_dynamic(ctx, 20, 1);
+            nk_label(ctx, "Shadow Engine", NK_TEXT_CENTERED);
+            nk_label(ctx, "Version 0.1.0", NK_TEXT_CENTERED);
+            nk_layout_row_dynamic(ctx, 20, 1);
+            nk_popup_end(ctx);
+        }
+        else
+        {
+            show_about = 0;
+        }
+    }
+}
+
 int main(void)
 {
     struct nk_context *ctx;
@@ -544,6 +568,7 @@ int main(void)
             show_tables(ctx, &results_table, &selection_table);
 
             show_processes_selector(ctx);
+            show_about_modal(ctx);
         }
         nk_end(ctx);
 
