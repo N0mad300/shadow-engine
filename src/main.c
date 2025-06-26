@@ -42,6 +42,7 @@ static int width;
 static int height;
 static int show_about;
 static int selected_row;
+static int context_menu_row;
 static int show_processes_list;
 
 static float modal_width;
@@ -123,6 +124,7 @@ WindowProc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
 /* GUI Functions Declarations */
 void show_menubar(struct nk_context *ctx);
 void show_combobox(struct nk_context *ctx);
+void show_about_modal(struct nk_context *ctx);
 void show_processes_selector(struct nk_context *ctx);
 void show_tables(struct nk_context *ctx, ResultsTable *memory_table, SelectionTable *s_table);
 
@@ -217,10 +219,12 @@ void show_combobox(struct nk_context *ctx)
 
 void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *s_table)
 {
-    static int context_menu_row = -1;
     static struct nk_vec2 context_menu_pos;
 
+    // Not editable table for results addresses
     nk_layout_row_dynamic(ctx, 200, 1);
+    struct nk_rect results_addresses_group_bounds = nk_layout_widget_bounds(ctx);
+
     if (nk_group_begin(ctx, "Scan Results", NK_WINDOW_BORDER | NK_WINDOW_TITLE))
     {
         nk_layout_row_dynamic(ctx, 25, 3);
@@ -265,9 +269,10 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
             nk_bool prev_clicked = nk_selectable_label(ctx, entry->previous_value ? entry->previous_value : "NULL", NK_TEXT_CENTERED, &is_selected);
             bounds_prev = nk_widget_bounds(ctx);
 
-            if (nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, bounds_addr) ||
-                nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, bounds_value) ||
-                nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, bounds_prev))
+            if (nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, results_addresses_group_bounds) &&
+                (nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, bounds_addr) ||
+                 nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, bounds_value) ||
+                 nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, bounds_prev)))
             {
                 printf("Row %d selected", (int)i);
                 context_menu_row = (int)i;
@@ -299,8 +304,6 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
 
             if (nk_menu_item_label(ctx, "Copy Address", NK_TEXT_LEFT))
             {
-                // TODO : Find why the address copied to clipboard
-                // isn't the same as the one display in the table
                 char addr_str[20];
                 ResultEntry *entry = &r_table->results[context_menu_row];
                 printf("Copying to clipboard address: %p", entry->address);
@@ -350,7 +353,7 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
         }
     }
 
-    // Editable Table for Selected Addresses
+    // Editable table for selected addresses
     nk_layout_row_dynamic(ctx, 200, 1);
     if (nk_group_begin(ctx, "Selected Addresses", NK_WINDOW_BORDER | NK_WINDOW_TITLE))
     {
@@ -525,6 +528,7 @@ int main(void)
     }
 
     selected_row = -1;
+    context_menu_row = -1;
     show_processes_list = 0;
     current_process_name = malloc(MAX_NAME_LEN);
 
