@@ -10,6 +10,50 @@ int search_value_len = 0;
 int selected_value_type = VALUE_4BYTES;
 int selected_scan_type = SCAN_EXACT_VALUE;
 
+volatile bool freeze_thread_running = false;
+
+DWORD WINAPI freeze_thread_proc(LPVOID param)
+{
+    while (freeze_thread_running)
+    {
+        for (size_t i = 0; i < selection_table.selection_count; i++)
+        {
+            SelectionEntry *entry = &selection_table.selection[i];
+            if (entry->freeze)
+            {
+                HANDLE process_handle = processes[selected_process].handle;
+                change_process_memory(process_handle, entry->address, entry->value, selected_value_type);
+            }
+        }
+        Sleep(100); // Freeze every 100 ms
+    }
+    return 0;
+}
+
+HANDLE freeze_thread_handle = NULL;
+
+void start_freeze_thread()
+{
+    if (!freeze_thread_running)
+    {
+        printf("[DEBUG] Starting freeze thread \n");
+        freeze_thread_running = true;
+        freeze_thread_handle = CreateThread(NULL, 0, freeze_thread_proc, NULL, 0, NULL);
+    }
+}
+
+void stop_freeze_thread()
+{
+    if (freeze_thread_running)
+    {
+        printf("[DEBUG] Stopping freeze thread \n");
+        freeze_thread_running = false;
+        WaitForSingleObject(freeze_thread_handle, INFINITE);
+        CloseHandle(freeze_thread_handle);
+        freeze_thread_handle = NULL;
+    }
+}
+
 void init_results_table(ResultsTable *table)
 {
     clear_results_table(table);

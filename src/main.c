@@ -121,6 +121,22 @@ WindowProc(HWND wnd, UINT msg, WPARAM wparam, LPARAM lparam)
     return DefWindowProcW(wnd, msg, wparam, lparam);
 }
 
+bool check_freeze(const SelectionTable *s_table)
+{
+    if (s_table == NULL || s_table->selection == NULL)
+    {
+        return false;
+    }
+    for (size_t i = 0; i < s_table->selection_count; i++)
+    {
+        if (s_table->selection[i].freeze)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* GUI Functions Declarations */
 void show_menubar(struct nk_context *ctx);
 void show_combobox(struct nk_context *ctx);
@@ -396,6 +412,15 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
 
             // Freeze Checkbox
             nk_checkbox_label_align(ctx, "", &entry->freeze, NK_WIDGET_CENTERED, NK_TEXT_CENTERED);
+
+            if (entry->freeze)
+            {
+                start_freeze_thread();
+            }
+            else if (check_freeze(&s_table) == false)
+            {
+                stop_freeze_thread();
+            }
         }
         nk_group_end(ctx);
     }

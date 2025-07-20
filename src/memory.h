@@ -77,6 +77,8 @@ void init_selection_table(SelectionTable *table);
 void clear_selection_table(SelectionTable *table);
 void clear_results_table(ResultsTable *table);
 void init_results_table(ResultsTable *table);
+void start_freeze_thread();
+void stop_freeze_thread();
 
 const char *get_error_string(DWORD error_id);
 
