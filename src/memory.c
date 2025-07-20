@@ -467,6 +467,35 @@ bool load_results(HANDLE process_handle, ResultsTable *table, const char *search
     return true;
 }
 
+bool change_process_memory(HANDLE hProcess, LPVOID address, const char *value_str, ValueType type)
+{
+    SIZE_T bytesWritten;
+    size_t value_size;
+    uint64_t parsed_value = 0;
+
+    if (!get_value_size(type, &value_size))
+    {
+        fprintf(stderr, "[ERROR] Invalid value type specified.\n");
+        return false;
+    }
+
+    if (!parse_value(value_str, type, &parsed_value))
+    {
+        fprintf(stderr, "[ERROR] Failed to parse value '%s'.\n", value_str);
+        return false;
+    }
+
+    BOOL result = WriteProcessMemory(hProcess, address, &parsed_value, value_size, &bytesWritten);
+    if (!result || bytesWritten != value_size)
+    {
+        fprintf(stderr, "[ERROR] Failed to write to address %p. Error code: %lu\n", address, GetLastError());
+        return false;
+    }
+
+    printf("[INFO] Successfully wrote %llu (%zu bytes) to address %p\n", parsed_value, value_size, address);
+    return true;
+}
+
 const char *get_error_string(DWORD error_id)
 {
     static char buffer[256];

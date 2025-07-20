@@ -390,6 +390,8 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
             if (enter_key_pressed && (result & NK_EDIT_ACTIVE))
             {
                 printf("Row %d text changed to: '%s' (Length: %d)\n", i, entry->value, entry->length);
+                HANDLE process_handle = processes[selected_process].handle;
+                change_process_memory(process_handle, entry->address, entry->value, selected_value_type);
             }
 
             // Freeze Checkbox

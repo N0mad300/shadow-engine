@@ -68,6 +68,7 @@ bool parse_value(const char *input, int type, void *output);
 bool refine_results(HANDLE process_handle, LPCVOID target_value, SIZE_T value_size);
 bool scan_process_memory(HANDLE process_handle, LPCVOID target_value, SIZE_T value_size);
 bool load_results(HANDLE process_handle, ResultsTable *table, const char *search_value_str, const char *previous_search_value_str);
+bool change_process_memory(HANDLE hProcess, LPVOID address, const char *value_str, ValueType type);
 
 void format_value(const void *value, size_t size, char *output, size_t output_size);
 void refine_memory_scan(HANDLE process_handle, ResultsTable *table);
