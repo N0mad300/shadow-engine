@@ -223,7 +223,6 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
 
     // Not editable table for results addresses
     nk_layout_row_dynamic(ctx, 200, 1);
-    struct nk_rect results_addresses_group_bounds = nk_layout_widget_bounds(ctx);
 
     if (nk_group_begin(ctx, "Scan Results", NK_WINDOW_BORDER | NK_WINDOW_TITLE))
     {
@@ -257,37 +256,35 @@ void show_tables(struct nk_context *ctx, ResultsTable *r_table, SelectionTable *
             char addr_str[20];
             snprintf(addr_str, sizeof(addr_str), "0x%p", entry->address);
 
-            struct nk_rect bounds_addr, bounds_value, bounds_prev;
-
-            // Create selectable labels
+            // Create selectable labels and check for hover state on each
             nk_bool addr_clicked = nk_selectable_label(ctx, addr_str, NK_TEXT_CENTERED, &is_selected);
-            bounds_addr = nk_widget_bounds(ctx);
+            nk_bool is_row_hovered = nk_widget_is_hovered(ctx);
 
             nk_bool value_clicked = nk_selectable_label(ctx, entry->value ? entry->value : "NULL", NK_TEXT_CENTERED, &is_selected);
-            bounds_value = nk_widget_bounds(ctx);
+            if (!is_row_hovered)
+                is_row_hovered = nk_widget_is_hovered(ctx);
 
             nk_bool prev_clicked = nk_selectable_label(ctx, entry->previous_value ? entry->previous_value : "NULL", NK_TEXT_CENTERED, &is_selected);
-            bounds_prev = nk_widget_bounds(ctx);
+            if (!is_row_hovered)
+                is_row_hovered = nk_widget_is_hovered(ctx);
 
-            if (nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, results_addresses_group_bounds) &&
-                (nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, bounds_addr) ||
-                 nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, bounds_value) ||
-                 nk_input_is_mouse_click_in_rect(&ctx->input, NK_BUTTON_RIGHT, bounds_prev)))
+            // Open context menu on right click if any part of the row is hovered
+            if (is_row_hovered && nk_input_is_mouse_pressed(&ctx->input, NK_BUTTON_RIGHT))
             {
-                printf("Row %d selected", (int)i);
                 context_menu_row = (int)i;
                 context_menu_pos = ctx->input.mouse.pos;
+                selected_row = (int)i;
             }
-
-            // Restore original style
-            ctx->style.selectable = selectable_style_backup;
-            ctx->style.window = window_style_backup;
 
             // Update selection if any cell was clicked
             if (addr_clicked || value_clicked || prev_clicked)
             {
                 selected_row = (int)i;
             }
+
+            // Restore original style
+            ctx->style.selectable = selectable_style_backup;
+            ctx->style.window = window_style_backup;
         }
         nk_group_end(ctx);
     }
